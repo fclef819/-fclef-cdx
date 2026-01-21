@@ -1,0 +1,39 @@
+# cdx
+
+Codex session wrapper CLI.
+
+## Notes
+
+- This is an unofficial community tool and is not affiliated with OpenAI.
+- This tool does not bundle or redistribute the Codex CLI.
+- Scope: manage Codex session selection and launch/resume workflows only.
+- OpenAI, Codex, and related marks are trademarks of their respective owners.
+
+## .cdx format
+
+Each line is:
+
+```
+<uuid>\t<label>
+```
+
+## Usage
+
+- `cdx` to select or create a session
+- `cdx here` to use `.cdx` from the current directory without parent search
+- `cdx rm` to remove a session from `.cdx`
+- `cdx rm here` or `cdx here rm` to remove a session from `.cdx` in the current directory
+- `cdx -h`, `cdx --help`, or `cdx help` to show help
+
+## Install (npm)
+
+```
+npm install -g @fclef/cdx
+```
+
+## Install (local/dev)
+
+```
+npm install
+npm link
+```

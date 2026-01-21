@@ -1,0 +1,25 @@
+{
+  "name": "@fclef/cdx",
+  "version": "0.1.0",
+  "description": "Codex session wrapper",
+  "keywords": [
+    "codex",
+    "cli",
+    "tui"
+  ],
+  "bin": {
+    "cdx": "bin/cdx.js"
+  },
+  "type": "commonjs",
+  "license": "MIT",
+  "files": [
+    "bin",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "prompts": "^2.4.2"
+  }
+}
