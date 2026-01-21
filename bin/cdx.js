@@ -136,6 +136,13 @@ function getNewestHistorySessionIdSince(previousId) {
 }
 
 function runCodex(args, cwd) {
+  const check = spawnSync("codex", ["--version"], { stdio: "ignore" });
+  if (check.error && check.error.code === "ENOENT") {
+    console.error(
+      "Codex CLI is not available. Please install it and ensure `codex` is on your PATH."
+    );
+    process.exit(1);
+  }
   const result = spawnSync("codex", args, { stdio: "inherit", cwd });
   if (result.error) {
     console.error("Failed to run codex:", result.error.message);

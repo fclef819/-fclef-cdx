@@ -2,6 +2,10 @@
 
 Codex session wrapper CLI.
 
+## Requirements
+
+- Codex CLI installed and available as `codex` in your PATH
+
 ## Notes
 
 - This is an unofficial community tool and is not affiliated with OpenAI.
@@ -37,3 +41,9 @@ npm install -g @fclef/cdx
 npm install
 npm link
 ```
+
+## Issues & Feedback
+
+If you find a bug or want an enhancement, please open an issue in:
+https://github.com/fclef819/-fclef-cdx
+Repro steps and environment details are appreciated.
