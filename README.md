@@ -37,7 +37,7 @@ Each line is:
 ## Install (npm)
 
 ```
-npm install -g @fclef/cdx
+npm install -g @fclef819/cdx
 ```
 
 ## Install (local/dev)
