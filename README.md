@@ -2,6 +2,11 @@
 
 Codex session wrapper CLI.
 
+## Why
+
+- Keeping sessions separate by use case (development, testing, review) helps maintain accuracy.
+- Managing multiple sessions manually is tedious; this tool streamlines it.
+
 ## Requirements
 
 - Codex CLI installed and available as `codex` in your PATH
