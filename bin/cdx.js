@@ -15,6 +15,11 @@ function logVerbose(message, enabled) {
   if (enabled) console.log(message);
 }
 
+function escapePowerShellArg(value) {
+  if (value === "") return "''";
+  return `'${value.replace(/'/g, "''")}'`;
+}
+
 function findCdxFile(startDir, verbose) {
   let dir = path.resolve(startDir);
   while (true) {
@@ -148,22 +153,66 @@ function getNewestHistorySessionIdSince(previousId, verbose) {
 
 function runCodex(args, cwd, verbose) {
   logVerbose(`Running codex ${args.join(" ")}`.trim(), verbose);
-  const check = spawnSync("codex", ["--version"], { stdio: "ignore" });
-  if (check.error && check.error.code === "ENOENT") {
+  const result = spawnSync("codex", args, { stdio: "inherit", cwd });
+  if (result.error) {
+    if (result.error.code === "ENOENT" && process.platform === "win32") {
+      logVerbose("codex not found directly; trying PowerShell fallback", verbose);
+      const psArgs = [
+        "-NoProfile",
+        "-Command",
+        ["codex", ...args.map(escapePowerShellArg)].join(" ")
+      ];
+      const psResult = spawnSync("powershell.exe", psArgs, {
+        stdio: "inherit",
+        cwd
+      });
+      if (!psResult.error) {
+        if (psResult.status !== 0) process.exit(psResult.status ?? 1);
+        return;
+      }
+    }
     console.error(
       "Codex CLI is not available. Please install it and ensure `codex` is on your PATH."
     );
     process.exit(1);
   }
-  const result = spawnSync("codex", args, { stdio: "inherit", cwd });
-  if (result.error) {
-    console.error("Failed to run codex:", result.error.message);
-    process.exit(result.status ?? 1);
-  }
   if (result.status !== 0) process.exit(result.status ?? 1);
 }
 
+function printSessionList(entries) {
+  console.log("0: new");
+  entries.forEach((entry, index) => {
+    console.log(`${index + 1}: ${entry.label} (${entry.uuid})`);
+  });
+}
+
 async function selectSession(entries) {
+  if (!entries.length) {
+    return { type: "new" };
+  }
+
+  printSessionList(entries);
+  while (true) {
+    const numberInput = await prompts({
+      type: "text",
+      name: "value",
+      message: "Select by number (Enter for list selection)",
+      validate: (value) => {
+        if (!value || !value.trim()) return true;
+        if (!/^\d+$/.test(value.trim())) return "Enter a number";
+        const index = Number.parseInt(value.trim(), 10);
+        if (index < 0 || index > entries.length) return "Out of range";
+        return true;
+      }
+    });
+
+    if (!numberInput.value && numberInput.value !== "0") break;
+    const index = Number.parseInt(String(numberInput.value).trim(), 10);
+    if (Number.isNaN(index)) break;
+    if (index === 0) return { type: "new" };
+    return { type: "resume", entry: entries[index - 1] };
+  }
+
   const choices = [
     { title: "new", value: { type: "new" } },
     ...entries.map((entry) => ({
@@ -261,18 +310,48 @@ async function runRemove(startDir, verbose) {
   }
 
   console.log(`.cdx: ${targetPath}`);
-  const response = await prompts({
-    type: "select",
-    name: "selection",
-    message: "Select a session to remove",
-    choices: entries.map((entry) => ({
-      title: `${entry.label} (${entry.uuid})`,
-      value: entry.uuid
-    }))
+  entries.forEach((entry, index) => {
+    console.log(`${index + 1}: ${entry.label} (${entry.uuid})`);
   });
 
-  if (!response.selection) return;
-  const remaining = entries.filter((entry) => entry.uuid !== response.selection);
+  let selectedUuid = null;
+  while (true) {
+    const numberInput = await prompts({
+      type: "text",
+      name: "value",
+      message: "Select by number (Enter for list selection)",
+      validate: (value) => {
+        if (!value || !value.trim()) return true;
+        if (!/^\d+$/.test(value.trim())) return "Enter a number";
+        const index = Number.parseInt(value.trim(), 10);
+        if (index < 1 || index > entries.length) return "Out of range";
+        return true;
+      }
+    });
+
+    if (!numberInput.value) break;
+    const index = Number.parseInt(String(numberInput.value).trim(), 10);
+    if (!Number.isNaN(index)) {
+      selectedUuid = entries[index - 1].uuid;
+    }
+    break;
+  }
+
+  if (!selectedUuid) {
+    const response = await prompts({
+      type: "select",
+      name: "selection",
+      message: "Select a session to remove",
+      choices: entries.map((entry) => ({
+        title: `${entry.label} (${entry.uuid})`,
+        value: entry.uuid
+      }))
+    });
+    if (!response.selection) return;
+    selectedUuid = response.selection;
+  }
+
+  const remaining = entries.filter((entry) => entry.uuid !== selectedUuid);
   writeEntries(targetPath, remaining, verbose);
 }
 
