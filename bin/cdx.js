@@ -153,6 +153,14 @@ function getNewestHistorySessionIdSince(previousId, verbose) {
 
 function runCodex(args, cwd, verbose) {
   logVerbose(`Running codex ${args.join(" ")}`.trim(), verbose);
+  if (process.stdin.isTTY) {
+    try {
+      process.stdin.setRawMode(false);
+    } catch {
+      // ignore if not supported
+    }
+    process.stdin.pause();
+  }
   const result = spawnSync("codex", args, { stdio: "inherit", cwd });
   if (result.error) {
     if (result.error.code === "ENOENT" && process.platform === "win32") {
@@ -167,8 +175,7 @@ function runCodex(args, cwd, verbose) {
         cwd
       });
       if (!psResult.error) {
-        if (psResult.status !== 0) process.exit(psResult.status ?? 1);
-        return;
+        return { status: psResult.status ?? 0 };
       }
     }
     console.error(
@@ -176,14 +183,18 @@ function runCodex(args, cwd, verbose) {
     );
     process.exit(1);
   }
-  if (result.status !== 0) process.exit(result.status ?? 1);
+  return { status: result.status ?? 0 };
 }
 
-function printSessionList(entries) {
-  console.log("0: new");
-  entries.forEach((entry, index) => {
-    console.log(`${index + 1}: ${entry.label} (${entry.uuid})`);
-  });
+function suggestByNumber(input, choices) {
+  const term = (input || "").trim();
+  if (!term) return choices;
+  if (/^\d+$/.test(term)) {
+    const number = Number.parseInt(term, 10);
+    return choices.filter((choice) => choice.number === number);
+  }
+  const lower = term.toLowerCase();
+  return choices.filter((choice) => choice.title.toLowerCase().includes(lower));
 }
 
 async function selectSession(entries) {
@@ -191,41 +202,21 @@ async function selectSession(entries) {
     return { type: "new" };
   }
 
-  printSessionList(entries);
-  while (true) {
-    const numberInput = await prompts({
-      type: "text",
-      name: "value",
-      message: "Select by number (Enter for list selection)",
-      validate: (value) => {
-        if (!value || !value.trim()) return true;
-        if (!/^\d+$/.test(value.trim())) return "Enter a number";
-        const index = Number.parseInt(value.trim(), 10);
-        if (index < 0 || index > entries.length) return "Out of range";
-        return true;
-      }
-    });
-
-    if (!numberInput.value && numberInput.value !== "0") break;
-    const index = Number.parseInt(String(numberInput.value).trim(), 10);
-    if (Number.isNaN(index)) break;
-    if (index === 0) return { type: "new" };
-    return { type: "resume", entry: entries[index - 1] };
-  }
-
   const choices = [
-    { title: "new", value: { type: "new" } },
-    ...entries.map((entry) => ({
-      title: `${entry.label} (${entry.uuid})`,
-      value: { type: "resume", entry }
+    { title: "0: new", value: { type: "new" }, number: 0 },
+    ...entries.map((entry, index) => ({
+      title: `${index + 1}: ${entry.label} (${entry.uuid})`,
+      value: { type: "resume", entry },
+      number: index + 1
     }))
   ];
 
   const response = await prompts({
-    type: "select",
+    type: "autocomplete",
     name: "selection",
-    message: "Select a session",
-    choices
+    message: "Select a session (arrow keys or number+Enter)",
+    choices,
+    suggest: suggestByNumber
   });
 
   return response.selection;
@@ -269,7 +260,7 @@ async function runDefault(startDir, options) {
     const label = sanitizeLabel(labelInput);
     const previousHistoryId = getLastHistorySessionId(options.verbose);
     const previousSession = getLatestSessionSnapshot(options.verbose);
-    runCodex([], workDir, options.verbose);
+    const codexResult = runCodex([], workDir, options.verbose);
     const latestSession = getLatestSessionSnapshot(options.verbose);
     let newId = null;
     if (
@@ -285,14 +276,27 @@ async function runDefault(startDir, options) {
     }
     if (!newId) {
       console.error("Could not determine new session UUID; not updating .cdx.");
+      if (codexResult && codexResult.status !== 0) {
+        process.exit(codexResult.status);
+      }
       return;
     }
     appendEntry(cdxPath, { uuid: newId, label }, options.verbose);
+    if (codexResult && codexResult.status !== 0) {
+      process.exit(codexResult.status);
+    }
     return;
   }
 
   if (selection.type === "resume") {
-    runCodex(["resume", selection.entry.uuid], workDir, options.verbose);
+    const codexResult = runCodex(
+      ["resume", selection.entry.uuid],
+      workDir,
+      options.verbose
+    );
+    if (codexResult && codexResult.status !== 0) {
+      process.exit(codexResult.status);
+    }
   }
 }
 
@@ -310,48 +314,20 @@ async function runRemove(startDir, verbose) {
   }
 
   console.log(`.cdx: ${targetPath}`);
-  entries.forEach((entry, index) => {
-    console.log(`${index + 1}: ${entry.label} (${entry.uuid})`);
+  const response = await prompts({
+    type: "autocomplete",
+    name: "selection",
+    message: "Select a session to remove (arrow keys or number+Enter)",
+    choices: entries.map((entry, index) => ({
+      title: `${index + 1}: ${entry.label} (${entry.uuid})`,
+      value: entry.uuid,
+      number: index + 1
+    })),
+    suggest: suggestByNumber
   });
 
-  let selectedUuid = null;
-  while (true) {
-    const numberInput = await prompts({
-      type: "text",
-      name: "value",
-      message: "Select by number (Enter for list selection)",
-      validate: (value) => {
-        if (!value || !value.trim()) return true;
-        if (!/^\d+$/.test(value.trim())) return "Enter a number";
-        const index = Number.parseInt(value.trim(), 10);
-        if (index < 1 || index > entries.length) return "Out of range";
-        return true;
-      }
-    });
-
-    if (!numberInput.value) break;
-    const index = Number.parseInt(String(numberInput.value).trim(), 10);
-    if (!Number.isNaN(index)) {
-      selectedUuid = entries[index - 1].uuid;
-    }
-    break;
-  }
-
-  if (!selectedUuid) {
-    const response = await prompts({
-      type: "select",
-      name: "selection",
-      message: "Select a session to remove",
-      choices: entries.map((entry) => ({
-        title: `${entry.label} (${entry.uuid})`,
-        value: entry.uuid
-      }))
-    });
-    if (!response.selection) return;
-    selectedUuid = response.selection;
-  }
-
-  const remaining = entries.filter((entry) => entry.uuid !== selectedUuid);
+  if (!response.selection) return;
+  const remaining = entries.filter((entry) => entry.uuid !== response.selection);
   writeEntries(targetPath, remaining, verbose);
 }
 
