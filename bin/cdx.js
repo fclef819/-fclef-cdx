@@ -164,7 +164,22 @@ function runCodex(args, cwd, verbose) {
   const result = spawnSync("codex", args, { stdio: "inherit", cwd });
   if (result.error) {
     if (result.error.code === "ENOENT" && process.platform === "win32") {
-      logVerbose("codex not found directly; trying PowerShell fallback", verbose);
+      logVerbose("codex not found directly; trying where.exe lookup", verbose);
+      const whereResult = spawnSync("where.exe", ["codex"], { encoding: "utf8" });
+      const resolved = whereResult.stdout
+        ? whereResult.stdout.split(/\r?\n/).find(Boolean)
+        : null;
+      if (resolved) {
+        logVerbose(`Resolved codex path: ${resolved}`, verbose);
+        const resolvedResult = spawnSync(resolved, args, {
+          stdio: "inherit",
+          cwd
+        });
+        if (!resolvedResult.error) {
+          return { status: resolvedResult.status ?? 0 };
+        }
+      }
+      logVerbose("codex not found via where.exe; trying PowerShell fallback", verbose);
       const psArgs = [
         "-NoProfile",
         "-Command",
