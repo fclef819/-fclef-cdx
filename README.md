@@ -31,7 +31,6 @@ Each line is:
 - `cdx` to select or create a session
 - `cdx here` to use `.cdx` from the current directory without parent search
 - `cdx rm` to remove a session from `.cdx`
-- `cdx rm here` or `cdx here rm` to remove a session from `.cdx` in the current directory
 - `cdx -h`, `cdx --help`, or `cdx help` to show help
 
 ## Install (npm)

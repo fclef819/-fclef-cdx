@@ -223,16 +223,13 @@ async function runDefault(startDir, options) {
   }
 }
 
-async function runRemove(startDir, options) {
-  const found = options.here ? null : findCdxFile(startDir);
-  const targetPath = found ? found.filePath : path.join(startDir, CDX_FILENAME);
-  const targetDir = found ? found.dir : startDir;
+async function runRemove(startDir) {
+  const found = findCdxFile(startDir);
   if (!found) {
-    if (!fs.existsSync(targetPath)) {
-      console.log("No .cdx file found.");
-      return;
-    }
+    console.log("No .cdx file found.");
+    return;
   }
+  const targetPath = found.filePath;
   const entries = loadEntries(targetPath);
   if (!entries.length) {
     console.log("No sessions to remove.");
@@ -286,8 +283,8 @@ async function main() {
     return;
   }
 
-  if (subcommand === "rm" || (here && args.includes("rm"))) {
-    await runRemove(startDir, { here });
+  if (subcommand === "rm") {
+    await runRemove(startDir);
     return;
   }
 
