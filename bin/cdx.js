@@ -7,7 +7,14 @@ const { spawnSync } = require("child_process");
 const prompts = require("prompts");
 
 const CDX_FILENAME = ".cdx";
-const CODEX_HOME = path.join(process.env.HOME || "", ".codex");
+const USER_HOME =
+  process.env.CODEX_HOME ||
+  process.env.HOME ||
+  process.env.USERPROFILE ||
+  "";
+const CODEX_HOME = process.env.CODEX_HOME
+  ? process.env.CODEX_HOME
+  : path.join(USER_HOME, ".codex");
 const HISTORY_PATH = path.join(CODEX_HOME, "history.jsonl");
 const SESSIONS_DIR = path.join(CODEX_HOME, "sessions");
 
@@ -159,7 +166,7 @@ function runCodex(args, cwd, verbose) {
     } catch {
       // ignore if not supported
     }
-    process.stdin.pause();
+    process.stdin.resume();
   }
   const result = spawnSync("codex", args, { stdio: "inherit", cwd });
   if (result.error) {
@@ -171,10 +178,16 @@ function runCodex(args, cwd, verbose) {
         : null;
       if (resolved) {
         logVerbose(`Resolved codex path: ${resolved}`, verbose);
-        const resolvedResult = spawnSync(resolved, args, {
-          stdio: "inherit",
-          cwd
-        });
+        let resolvedResult;
+        if (resolved.toLowerCase().endsWith(".cmd") || resolved.toLowerCase().endsWith(".bat")) {
+          resolvedResult = spawnSync(
+            "cmd.exe",
+            ["/d", "/s", "/c", resolved, ...args],
+            { stdio: "inherit", cwd }
+          );
+        } else {
+          resolvedResult = spawnSync(resolved, args, { stdio: "inherit", cwd });
+        }
         if (!resolvedResult.error) {
           return { status: resolvedResult.status ?? 0 };
         }
@@ -263,6 +276,9 @@ async function runDefault(startDir, options) {
   const cdxPath = found ? found.filePath : path.join(startDir, CDX_FILENAME);
   const entries = loadEntries(found?.filePath);
 
+  logVerbose(`CODEX_HOME: ${CODEX_HOME}`, options.verbose);
+  logVerbose(`Sessions dir: ${SESSIONS_DIR}`, options.verbose);
+  logVerbose(`History file: ${HISTORY_PATH}`, options.verbose);
   console.log(`.cdx: ${cdxPath}`);
   const selection = options.forceNew
     ? { type: "new" }
