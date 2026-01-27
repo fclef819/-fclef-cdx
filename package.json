@@ -1,6 +1,6 @@
 {
   "name": "@fclef819/cdx",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "Codex session wrapper",
   "keywords": [
     "codex",
@@ -16,6 +16,9 @@
     "bin",
     "README.md"
   ],
+  "scripts": {
+    "release": "npm login && npm pack && npm publish --access public"
+  },
   "engines": {
     "node": ">=18"
   },

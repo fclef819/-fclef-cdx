@@ -166,33 +166,21 @@ function runCodex(args, cwd, verbose) {
     } catch {
       // ignore if not supported
     }
-    process.stdin.resume();
   }
   const result = spawnSync("codex", args, { stdio: "inherit", cwd });
   if (result.error) {
     if (result.error.code === "ENOENT" && process.platform === "win32") {
-      logVerbose("codex not found directly; trying where.exe lookup", verbose);
-      const whereResult = spawnSync("where.exe", ["codex"], { encoding: "utf8" });
-      const resolved = whereResult.stdout
-        ? whereResult.stdout.split(/\r?\n/).find(Boolean)
-        : null;
-      if (resolved) {
-        logVerbose(`Resolved codex path: ${resolved}`, verbose);
-        let resolvedResult;
-        if (resolved.toLowerCase().endsWith(".cmd") || resolved.toLowerCase().endsWith(".bat")) {
-          resolvedResult = spawnSync(
-            "cmd.exe",
-            ["/d", "/s", "/c", resolved, ...args],
-            { stdio: "inherit", cwd }
-          );
-        } else {
-          resolvedResult = spawnSync(resolved, args, { stdio: "inherit", cwd });
-        }
-        if (!resolvedResult.error) {
-          return { status: resolvedResult.status ?? 0 };
-        }
+      logVerbose("codex not found directly; trying cmd.exe /c", verbose);
+      const cmdResult = spawnSync(
+        "cmd.exe",
+        ["/d", "/s", "/c", "codex", ...args],
+        { stdio: "inherit", cwd }
+      );
+      if (!cmdResult.error) {
+        if (process.stdin.isTTY) process.stdin.pause();
+        return { status: cmdResult.status ?? 0 };
       }
-      logVerbose("codex not found via where.exe; trying PowerShell fallback", verbose);
+      logVerbose("codex not found via cmd.exe; trying PowerShell fallback", verbose);
       const psArgs = [
         "-NoProfile",
         "-Command",
@@ -203,6 +191,7 @@ function runCodex(args, cwd, verbose) {
         cwd
       });
       if (!psResult.error) {
+        if (process.stdin.isTTY) process.stdin.pause();
         return { status: psResult.status ?? 0 };
       }
     }
@@ -211,6 +200,7 @@ function runCodex(args, cwd, verbose) {
     );
     process.exit(1);
   }
+  if (process.stdin.isTTY) process.stdin.pause();
   return { status: result.status ?? 0 };
 }
 
