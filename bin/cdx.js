@@ -126,28 +126,57 @@ function getLatestSessionSnapshot(verbose) {
   return { id, mtimeMs: latest.mtimeMs, path: latest.path };
 }
 
-function getLastHistorySessionId(verbose) {
-  if (!fs.existsSync(HISTORY_PATH)) return null;
-  const lines = fs.readFileSync(HISTORY_PATH, "utf8").trim().split("\n");
-  for (let i = lines.length - 1; i >= 0; i -= 1) {
-    try {
-      const record = JSON.parse(lines[i]);
-      if (record && record.session_id) return record.session_id;
-    } catch {
-      // ignore malformed lines
+function sessionHasUserMessage(filePath) {
+  try {
+    const lines = fs.readFileSync(filePath, "utf8").split("\n");
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      const record = JSON.parse(line);
+      if (
+        record?.type === "event_msg" &&
+        record.payload?.type === "user_message"
+      ) {
+        return true;
+      }
     }
+  } catch {
+    // ignore malformed or missing files
   }
-  logVerbose("No session_id found in history.jsonl", verbose);
-  return null;
+  return false;
 }
 
-function getNewestHistorySessionIdSince(previousId, verbose) {
+function getHistorySnapshot(verbose) {
+  if (!fs.existsSync(HISTORY_PATH)) return { size: 0 };
+  const stat = fs.statSync(HISTORY_PATH);
+  logVerbose(`History file size: ${stat.size}`, verbose);
+  return { size: stat.size };
+}
+
+function getNewestHistorySessionIdSince(snapshot, verbose) {
   if (!fs.existsSync(HISTORY_PATH)) return null;
-  const lines = fs.readFileSync(HISTORY_PATH, "utf8").trim().split("\n");
+  const stat = fs.statSync(HISTORY_PATH);
+  const previousSize = snapshot?.size ?? 0;
+  const start = stat.size < previousSize ? 0 : previousSize;
+  if (stat.size <= start) {
+    logVerbose("No new history lines found in history.jsonl", verbose);
+    return null;
+  }
+
+  const fd = fs.openSync(HISTORY_PATH, "r");
+  let content = "";
+  try {
+    const buffer = Buffer.alloc(stat.size - start);
+    fs.readSync(fd, buffer, 0, buffer.length, start);
+    content = buffer.toString("utf8");
+  } finally {
+    fs.closeSync(fd);
+  }
+
+  const lines = content.trim().split("\n");
   for (let i = lines.length - 1; i >= 0; i -= 1) {
     try {
       const record = JSON.parse(lines[i]);
-      if (record && record.session_id && record.session_id !== previousId) {
+      if (record && record.session_id) {
         return record.session_id;
       }
     } catch {
@@ -279,21 +308,21 @@ async function runDefault(startDir, options) {
     const labelInput = await promptLabel();
     if (!labelInput) return;
     const label = sanitizeLabel(labelInput);
-    const previousHistoryId = getLastHistorySessionId(options.verbose);
+    const previousHistory = getHistorySnapshot(options.verbose);
     const previousSession = getLatestSessionSnapshot(options.verbose);
     const codexResult = runCodex([], workDir, options.verbose);
     const latestSession = getLatestSessionSnapshot(options.verbose);
-    let newId = null;
+    let newId = getNewestHistorySessionIdSince(previousHistory, options.verbose);
     if (
+      !newId &&
       latestSession &&
       latestSession.id &&
       (!previousSession ||
         latestSession.path !== previousSession.path ||
-        latestSession.mtimeMs > previousSession.mtimeMs)
+        latestSession.mtimeMs > previousSession.mtimeMs) &&
+      sessionHasUserMessage(latestSession.path)
     ) {
       newId = latestSession.id;
-    } else if (previousHistoryId) {
-      newId = getNewestHistorySessionIdSince(previousHistoryId, options.verbose);
     }
     if (!newId) {
       console.error("Could not determine new session UUID; not updating .cdx.");
